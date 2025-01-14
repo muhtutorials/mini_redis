@@ -1,0 +1,21 @@
+[package]
+name = "mini_redis"
+version = "0.1.0"
+edition = "2021"
+
+
+[[bin]]
+name = "client"
+path = "src/bin/client.rs"
+
+[[bin]]
+name = "server"
+path = "src/bin/server.rs"
+
+[dependencies]
+async-stream = "0.3.6"
+atoi = "2.0.0"
+bytes = "1.9.0"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1.41"
+tokio-stream = "0.1.17"
