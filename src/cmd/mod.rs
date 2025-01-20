@@ -16,7 +16,7 @@ pub use subscribe::{Subscribe, Unsubscribe};
 mod unknown;
 pub use unknown::Unknown;
 
-use crate::{Connection, DB, Frame, Parse, ParseError, Shutdown};
+use crate::{Connection, DB, Frame, Parse, Shutdown};
 
 // Enumeration of supported Redis commands.
 //

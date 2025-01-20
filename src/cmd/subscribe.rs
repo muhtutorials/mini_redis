@@ -64,11 +64,10 @@ impl Subscribe {
         // been consumed, the command is fully parsed.
         loop {
             match parse.next_string() {
-                // A string has been consumed from the "parse", push it into the
+                // A string has been consumed from the "parse". Push it into the
                 // list of channels to subscribe to.
                 Ok(s) => channels.push(s),
-                // the "EndOfStream" error indicates there is no further data to
-                // parse
+                // the "EndOfStream" error indicates there is no further data to parse
                 Err(ParseError::EndOfStream) => break,
                 // all other errors are bubbled up, resulting in the connection
                 // being terminated
