@@ -17,7 +17,7 @@ use crate::{Connection, Frame};
 //
 // Requests are issued using the various methods of "Client".
 pub struct Client {
-    // The TCP connection decorated with the Redis protocol codec is
+    // The TCP connection decorated with the Redis protocol codec
     // implemented using a buffered "TcpStream".
     //
     // When "Listener" receives an inbound connection, the "TcpStream" is
@@ -34,8 +34,8 @@ pub struct Client {
 // to prevent non "pub/sub" methods from being called.
 pub struct Subscriber {
     client: Client,
-    // the set of channels to which the "Subscriber" is currently subscribed
-    subscribed_channels: Vec<String>,
+    // channels to which the "Subscriber" is currently subscribed
+    subs: Vec<String>,
 }
 
 // message received on the subscribed channel
@@ -152,7 +152,6 @@ impl Client {
         }
     }
 
-
     /// Set `key` to hold the given `value`.
     ///
     /// The `value` is associated with `key` until it is overwritten by the next
@@ -240,7 +239,7 @@ impl Client {
         self.set_cmd(Set::new(key, value, Some(expiration))).await
     }
 
-    // the core "SET" logic, used by both "set" and "set_expires"
+    // the core "SET" logic, used by both "set" and "set_exp"
     async fn set_cmd(&mut self, cmd: Set) -> crate::Result<()> {
         // convert the "Set" command into a frame
         let frame = cmd.into_frame();
@@ -254,6 +253,89 @@ impl Client {
             Frame::Simple(resp) if resp == "OK" => Ok(()),
             frame => Err(frame.to_error()),
         }
+    }
+
+    /// Posts `message` to the given `channel`.
+    ///
+    /// Returns the number of subscribers currently listening on the channel.
+    /// There is no guarantee that these subscribers receive the message as they
+    /// may disconnect at any time.
+    ///
+    /// # Examples
+    ///
+    /// Demonstrates basic usage.
+    ///
+    /// ```no_run
+    /// use mini_redis::clients::Client;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let mut client = Client::connect("localhost:6379").await.unwrap();
+    ///
+    ///     let val = client.publish("foo", "bar".into()).await.unwrap();
+    ///     println!("Got = {:?}", val);
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn publish(&mut self, channel: &str, message: Bytes) -> crate::Result<u64> {
+        // convert the "Publish" command into a frame
+        let frame = Publish::new(channel, message).into_frame();
+        debug!(request = ?frame);
+        // write the frame to the socket
+        self.connection.write_frame(&frame).await?;
+        // read the response
+        match self.read_response().await? {
+            Frame::Integer(resp) => Ok(resp),
+            frame => Err(frame.to_error()),
+        }
+    }
+
+    // Subscribes the client to the specified channels.
+    //
+    // Once a client issues a subscribe command, it may no longer issue any
+    // non "pub/sub" commands. The method consumes "self" and returns a "Subscriber".
+    //
+    // The "Subscriber" value is used to receive messages as well as manage the
+    // list of channels the client is subscribed to.
+    #[instrument(skip(self))]
+    pub async fn subscribe(mut self, channels: Vec<String>) -> crate::Result<Subscriber> {
+        // Issue the "Subscribe" command to the server and wait for confirmation.
+        // The client will then have been transitioned into the "Subscriber"
+        // state and may only issue "pub/sub" commands from that point on.
+        self.subscribe_cmd(&channels).await?;
+        Ok(Subscriber {
+            client: self,
+            subs: channels,
+        })
+    }
+
+    // the core "SUBSCRIBE" logic, used by miscellaneous subscribe methods
+    async fn subscribe_cmd(&mut self, channels: &[String]) -> crate::Result<()> {
+        // convert the "Subscribe" command into frame
+        let frame = Subscribe::new(channels.to_vec()).into_frame();
+        debug!(request = ?frame);
+        // write the frame to the socket
+        self.connection.write_frame(&frame).await?;
+        // for each channel being subscribed to, the server responds with a
+        // message confirming subscription to that channel
+        for channel in channels {
+            // read the response
+            let response = self.read_response().await?;
+            // verify confirmation of subscription
+            match response {
+                Frame::Array(ref frame) => match frame.as_slice() {
+                    // The server responds with an array frame in the form of:
+                    //  ["SUBSCRIBE", channel, num_subscribed]
+                    // Where channel is the name of the channel and
+                    // num_subscribed is the number of channels that the client
+                    // is currently subscribed to.
+                    [sub, ch, ..] if *sub == "SUBSCRIBE" && *ch == channel => {},
+                    _ => return Err(response.to_error()),
+                },
+                frame => return Err(frame.to_error()),
+            }
+        }
+        Ok(())
     }
 
     // Reads a response frame from the socket.
@@ -277,5 +359,109 @@ impl Client {
                 Err(err.into())
             }
         }
+    }
+}
+
+impl Subscriber {
+    // returns channels "Subscriber" is subscribed to
+    pub fn get_subs(&self) -> &[String] {
+        &self.subs
+    }
+
+    // Receive the next message published on a subscribed channel, waiting if
+    // necessary.
+    //
+    // "None" indicates the subscription has been terminated.
+    pub async fn next_message(&mut self) -> crate::Result<Option<Message>> {
+        match self.client.connection.read_frame().await? {
+            Some(frame) => {
+                debug!(?frame);
+                match frame {
+                    Frame::Array(ref frames) => match frames.as_slice() {
+                        [message, channel, content] if *message == "MESSAGE" => {
+                            Ok(Some(Message {
+                                channel: channel.to_string(),
+                                content: Bytes::from(content.to_string()),
+                            }))
+                        }
+                        _ => Err(frame.to_error())
+                    },
+                    frame => Err(frame.to_error()),
+                }
+            }
+            None => Ok(None)
+        }
+    }
+
+    // Convert the subscriber into a "Stream" yielding new messages published
+    // on subscribed channels.
+    //
+    // "Subscriber" does not implement stream itself as doing so with safe code
+    // is non-trivial. The usage of "async/await" would require a manual "Stream"
+    // implementation to use "unsafe" code. Instead, a conversion function is
+    // provided and the returned stream is implemented with the help of the
+    // "async-stream" crate.
+    pub fn into_stream(mut self) -> impl Stream<Item = crate::Result<Message>> {
+        // Uses the "try_stream" macro from the "async-stream" crate. Generators
+        // are not stable in Rust. The crate uses a macro to simulate generators
+        // on top of "async/await". There are limitations, so read the
+        // documentation there.
+        try_stream! {
+            while let Some(msg) = self.next_message().await? {
+                yield msg;
+            }
+        }
+    }
+
+    // subscribe to a list of new channels
+    #[instrument(skip(self))]
+    pub async fn subscribe(&mut self, channels: &[String]) -> crate::Result<()> {
+        self.client.subscribe_cmd(channels).await?;
+        // update the set of subscribed channels
+        // todo: not totally clear what's going on here
+        self.subs.extend(channels.iter().map(Clone::clone));
+        Ok(())
+    }
+
+    // unsubscribe from a list of channels
+    #[instrument(skip(self))]
+    pub async fn unsubscribe(&mut self, channels: &[String]) -> crate::Result<()> {
+        let frame = Unsubscribe::new(channels).into_frame();
+        debug!(request = ?frame);
+        // write frame to the socket
+        self.client.connection.write_frame(&frame).await?;
+        // if the input channel list is empty, server considers it as unsubscribing
+        // from all subscribed channels, so we assert that the unsubscribe list received
+        // matches the client subscribed one
+        let num = if channels.is_empty() {
+            self.subs.len()
+        } else {
+            channels.len()
+        };
+        // read the response
+        for _ in 0..num {
+            let resp = self.client.read_response().await;
+            match resp {
+                Frame::Array(ref frame) => match frame.as_slice() {
+                    [unsubscribe, channel, ..] if *unsubscribe == "UNSUBSCRIBE" => {
+                        let len = self.subs.len();
+                        if len == 0 {
+                            // there must be at least one channel
+                            return Err(resp.to_error());
+                        }
+                        // unsubscribed channel should exist in the subscribed list at this point
+                        self.subs.retain(|ch| *channel != &ch[..]);
+                        // only a single channel should be removed from the
+                        // list of subscribed channels
+                        if self.subs.len() != len - 1 {
+                            return Err(resp.to_error());
+                        }
+                    }
+                    _ => return Err(resp.to_error()),
+                },
+                frame => return Err(frame.to_error()),
+            }
+        }
+        Ok(())
     }
 }

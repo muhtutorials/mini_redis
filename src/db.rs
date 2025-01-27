@@ -60,9 +60,9 @@ struct Shared {
 
 #[derive(Debug)]
 struct State {
-    // the key-value data
+    // the "key/value" data
     entries: HashMap<String, Entry>,
-    // The pub/sub key space. Redis uses a separate key space for key-value
+    // The pub/sub key space. Redis uses a separate key space for "key/value"
     // and pub/sub. "mini_redis" handles this by using a separate "HashMap".
     pub_sub: HashMap<String, broadcast::Sender<Bytes>>,
     // Tracks key TTLs.
@@ -82,7 +82,7 @@ struct State {
     shutdown: bool,
 }
 
-// Entry in the key-value store
+// Entry in the "key/value" store
 #[derive(Debug)]
 struct Entry {
     // stored data

@@ -10,6 +10,8 @@ pub use frame::Frame;
 mod parse;
 use parse::{Parse, ParseError};
 
+pub mod server;
+
 mod shutdown;
 use shutdown::Shutdown;
 
