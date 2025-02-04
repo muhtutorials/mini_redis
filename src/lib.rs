@@ -21,7 +21,7 @@ pub use clients::{BlockingClient, BufferedClient, Client};
 pub mod cmd;
 pub use cmd::Command;
 
-pub const DEFAULT_PORT: &str = "6379";
+pub const DEFAULT_PORT: u16 = 6379;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 

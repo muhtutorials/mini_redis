@@ -1,5 +1,5 @@
 use std::{fmt, str, vec};
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 
 use bytes::Bytes;
 
@@ -123,11 +123,11 @@ impl From<&str> for ParseError {
     }
 }
 
-impl fmt::Display for ParseError {
+impl Display for ParseError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ParseError::EndOfStream => "protocol error; unexpected end of stream".fmt(f),
-            ParseError::Other(err) => err.fmt(f),
+            ParseError::EndOfStream => Debug::fmt(&"protocol error; unexpected end of stream", f),
+            ParseError::Other(err) => Debug::fmt(&err, f),
         }
     }
 }

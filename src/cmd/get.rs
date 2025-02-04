@@ -51,7 +51,7 @@ impl Get {
     //
     // The response is written to "conn". This is called by the server in order
     // to execute a received command.
-    #[instrument(skip(self, db, dst))]
+    #[instrument(skip(self, db, conn))]
     pub(crate) async fn apply(self, db: &DB, conn: &mut Connection) -> crate::Result<()> {
         // get the value from the shared database state
         let resp = if let Some(value) = db.get(&self.key) {

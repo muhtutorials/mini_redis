@@ -1,3 +1,7 @@
+//! Minimal Redis client implementation.
+//!
+//! Provides an async "connect" and methods for issuing the supported commands.
+
 use async_stream::try_stream;
 use bytes::Bytes;
 use std::io::{Error, ErrorKind};
@@ -29,7 +33,7 @@ pub struct Client {
 
 // A client that has entered "pub/sub" mode.
 //
-// Once client subscribes to a channel, they may only perform "pub/sub" related
+// Once a client subscribes to a channel, it may only perform "pub/sub" related
 // commands. The "Client" type is transitioned to a "Subscriber" type in order
 // to prevent non "pub/sub" methods from being called.
 pub struct Subscriber {
@@ -113,7 +117,7 @@ impl Client {
         }
     }
 
-    /// Get the value of key.
+    /// Get the value of a key.
     ///
     /// If the key does not exist the special value `None` is returned.
     ///
@@ -157,7 +161,7 @@ impl Client {
     /// The `value` is associated with `key` until it is overwritten by the next
     /// call to `SET` or it is removed.
     ///
-    /// If key already holds a value, it is overwritten. Any previous "time to live"
+    /// If key already holds a value, it is overwritten. Any previous `time to live`
     /// associated with the key is discarded on successful `SET` operation.
     ///
     /// # Examples
@@ -193,8 +197,8 @@ impl Client {
     /// - it is overwritten by the next call to `SET`;
     /// - it is removed.
     ///
-    /// If key already holds a value, it is overwritten. Any previous "time to live"
-    /// associated with the key is discarded on a successful "SET" operation.
+    /// If key already holds a value, it is overwritten. Any previous `time to live`
+    /// associated with the key is discarded on a successful `SET` operation.
     ///
     /// # Examples
     ///
@@ -292,7 +296,7 @@ impl Client {
 
     // Subscribes the client to the specified channels.
     //
-    // Once a client issues a subscribe command, it may no longer issue any
+    // Once a client issues a "Subscribe" command, it may no longer issue any
     // non "pub/sub" commands. The method consumes "self" and returns a "Subscriber".
     //
     // The "Subscriber" value is used to receive messages as well as manage the
@@ -440,7 +444,7 @@ impl Subscriber {
         };
         // read the response
         for _ in 0..num {
-            let resp = self.client.read_response().await;
+            let resp = self.client.read_response().await?;
             match resp {
                 Frame::Array(ref frame) => match frame.as_slice() {
                     [unsubscribe, channel, ..] if *unsubscribe == "UNSUBSCRIBE" => {

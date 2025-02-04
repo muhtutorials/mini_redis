@@ -1,4 +1,3 @@
-use std::ptr::read;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -131,7 +130,7 @@ impl Set {
             // 1. SET key value EX seconds;
             // 2. SET key value PX milliseconds;
             // We chose the second option because it allows greater precision and
-            // "src/bin/client.rs" parses the expiration argument as milliseconds
+            // "src/bin/cli" parses the expiration argument as milliseconds
             // in "duration_from_millis_str()".
             frame.push_bulk(Bytes::from("PX".as_bytes()));
             frame.push_int(dur.as_millis() as u64);

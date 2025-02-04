@@ -1,6 +1,5 @@
 use std::future::Future;
 use std::sync::Arc;
-use tokio::macros::support::maybe_done;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc, Semaphore};
 use tokio::time::{self, Duration};
@@ -104,7 +103,7 @@ struct Handler {
 //
 // "tokio::signal::ctrl_c()" can be used as the "shutdown" argument. This will
 // listen for a "SIGINT" signal.
-pub async fn run(lister: TcpListener, shutdown: impl Future) {
+pub async fn run(listener: TcpListener, shutdown: impl Future) {
     // When the provided "shutdown" future completes, we must send a shutdown
     // message to all active connections. We use a broadcast channel for this
     // purpose. The call below ignores the receiver of the broadcast pair, and when
