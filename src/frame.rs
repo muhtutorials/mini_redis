@@ -123,7 +123,7 @@ impl Frame {
                     if src.remaining() < n {
                         return Err(Error::Incomplete)
                     }
-                    let data = Bytes::copy_from_slice(&src.get_ref()[..len]);
+                    let data = Bytes::copy_from_slice(&src.chunk()[..len]);
                     // skip that number of bytes + 2 (2 is "\r\n")
                     skip(src, n)?;
                     Ok(Frame::Bulk(data))
@@ -132,11 +132,11 @@ impl Frame {
             // array
             b'*' => {
                 let len = get_decimal(src)?.try_into()?;
-                let mut out = Vec::with_capacity(len);
+                let mut frames = Vec::with_capacity(len);
                 for _ in 0..len {
-                    out.push(Frame::parse(src)?);
+                    frames.push(Frame::parse(src)?);
                 }
-                Ok(Frame::Array(out))
+                Ok(Frame::Array(frames))
             }
             _ => unimplemented!(),
         }
@@ -181,15 +181,13 @@ impl Display for Frame {
             Frame::Null => "(nil)".fmt(f),
         }
     }
-
-
 }
 
 fn peek_u8(src: &mut Cursor<&[u8]>) -> Result<u8, Error> {
     if !src.has_remaining() {
         return Err(Error::Incomplete);
     }
-    Ok(src.get_ref()[0])
+    Ok(src.chunk()[0])
 }
 
 fn get_u8(src: &mut Cursor<&[u8]>) -> Result<u8, Error> {
@@ -210,7 +208,7 @@ fn get_line<'a>(src: &mut Cursor<&'a [u8]>) -> Result<&'a [u8], Error> {
     let end = src.get_ref().len() - 1;
     for i in start..end {
         if src.get_ref()[i] == b'\r' && src.get_ref()[i + 1] == b'\n' {
-            // line is found, update the position to be after the "\n"
+            // line is found, update the position to be after the "\r\n"
             src.set_position((i + 2) as u64);
             return Ok(&src.get_ref()[start..i]);
         }

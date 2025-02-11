@@ -5,54 +5,6 @@ use std::str;
 use std::time::Duration;
 use mini_redis::{clients::Client, DEFAULT_PORT};
 
-#[derive(Parser, Debug)]
-#[command(
-    name = "mini_redis_cli",
-    version,
-    author,
-    about = "Issue Redis commands"
-)]
-struct Cli {
-    #[clap(subcommand)]
-    command: Command,
-    #[arg(id = "hostname", long, default_value = "127.0.0.1")]
-    host: String,
-    #[arg(long, default_value_t = DEFAULT_PORT)]
-    port: u16,
-}
-
-#[derive(Subcommand, Debug)]
-enum Command {
-    Ping {
-        // message to ping
-        message: Option<Bytes>
-    },
-    // get the value of key
-    Get {
-        // name of key to get
-        key: String,
-    },
-    // set key to hold the value
-    Set {
-        // name of key to set
-        key: String,
-        // value to set
-        value: Bytes,
-        // expire the value after specified amount of time
-        #[arg(value_parser = duration_from_ms_str)]
-        expiration: Option<Duration>,
-    },
-    // send a message to a specific channel
-    Publish {
-        channel: String,
-        message: Bytes,
-    },
-    // subscribe a client to a specific channel
-    Subscribe {
-        channels: Vec<String>,
-    }
-}
-
 // Entry point for CLI tool.
 //
 // The "[tokio::main]" annotation signals that the Tokio runtime should be
@@ -65,13 +17,13 @@ enum Command {
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> mini_redis::Result<()> {
     // parse command line arguments
-    let cli = Cli::parse();
+    let args = Args::parse();
     // get the remote address to connect to
-    let addr = format!("{}, {}", cli.host, cli.port);
+    let addr = format!("{}:{}", args.host, args.port);
     // establish connection
     let mut client = Client::connect(&addr).await?;
     // process the requested command
-    match cli.command {
+    match args.command {
         Command::Ping { message } => {
             let value = client.ping(message).await?;
             if let Ok(string) = str::from_utf8(&value) {
@@ -118,6 +70,54 @@ async fn main() -> mini_redis::Result<()> {
         }
     }
     Ok(())
+}
+
+#[derive(Parser, Debug)]
+#[command(
+    name = "mini_redis_client",
+    version,
+    author,
+    about = "Issue Redis commands"
+)]
+struct Args {
+    #[clap(subcommand)]
+    command: Command,
+    #[arg(id = "hostname", long, default_value = "127.0.0.1")]
+    host: String,
+    #[arg(long, default_value_t = DEFAULT_PORT)]
+    port: u16,
+}
+
+#[derive(Subcommand, Debug)]
+enum Command {
+    Ping {
+        // message to ping
+        message: Option<Bytes>
+    },
+    // get the value of key
+    Get {
+        // name of key to get
+        key: String,
+    },
+    // set key to hold the value
+    Set {
+        // name of key to set
+        key: String,
+        // value to set
+        value: Bytes,
+        // expire the value after specified amount of time
+        #[arg(value_parser = duration_from_ms_str)]
+        expiration: Option<Duration>,
+    },
+    // send a message to a specific channel
+    Publish {
+        channel: String,
+        message: Bytes,
+    },
+    // subscribe a client to a specific channel
+    Subscribe {
+        channels: Vec<String>,
+    }
 }
 
 fn duration_from_ms_str(src: &str) -> Result<Duration, ParseIntError> {
