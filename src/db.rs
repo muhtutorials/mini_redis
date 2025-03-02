@@ -1,12 +1,11 @@
 use std::collections::{BTreeSet, HashMap};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use bytes::Bytes;
 use tokio::sync::{broadcast, Notify};
 use tokio::time;
 use tokio::time::Instant;
-use tracing::debug;
 
 // A wrapper around a "DB" instance. This exists to allow orderly cleanup
 // of the "DB" by signalling the background purge task to shut down when
@@ -19,8 +18,8 @@ pub(crate) struct DBDropGuard {
 
 // Server state shared across all connections.
 //
-// "DB" contains a "HashMap" storing the key/value data and all
-// "broadcast::Sender" values for active pub/sub channels.
+// "DB" contains a "HashMap" storing the "key/value" data and all
+// "broadcast::Sender" values for active "pub/sub" channels.
 //
 // A "DB" instance is a handle to shared state. Cloning "DB" is shallow and
 // only incurs an atomic ref count increment.
@@ -45,7 +44,7 @@ struct Shared {
     //
     // A Tokio mutex is mostly intended to be used when locks need to be held
     // across ".await" yield points. All other cases are usually best
-    // served by a std mutex. If the critical section does not include any
+    // served by a "std::sync::Mutex". If the critical section does not include any
     // async operations but is long (CPU intensive or performing blocking
     // operations), then the entire operation, including waiting for the mutex,
     // is considered a "blocking" operation and "tokio::task::spawn_blocking"
@@ -60,10 +59,10 @@ struct Shared {
 
 #[derive(Debug)]
 struct State {
-    // the "key/value" data
+    // "key/value" data
     entries: HashMap<String, Entry>,
-    // The pub/sub key space. Redis uses a separate key space for "key/value"
-    // and pub/sub. "mini_redis" handles this by using a separate "HashMap".
+    // The "pub/sub" key space. Redis uses a separate key space for "key/value"
+    // and "pub/sub". "mini_redis" handles this by using a separate "HashMap".
     pub_sub: HashMap<String, broadcast::Sender<Bytes>>,
     // Tracks key TTLs.
     //
@@ -82,7 +81,7 @@ struct State {
     shutdown: bool,
 }
 
-// Entry in the "key/value" store
+// entry in the "key/value" store
 #[derive(Debug)]
 struct Entry {
     // stored data
@@ -92,13 +91,13 @@ struct Entry {
 }
 
 impl DBDropGuard {
-    // Create a new "DBDropGuard", wrapping a "DB" instance. When this is dropped
+    // Creates a new "DBDropGuard" that wraps a "DB" instance. When it is dropped
     // the "DB"'s purge task will be shut down.
     pub(crate) fn new() -> DBDropGuard {
         DBDropGuard{ db: DB::new() }
     }
 
-    // Get the shared database. Internally, this is an
+    // Returns the shared database. Internally, this is an
     // "Arc", so a clone only increments the ref count.
     pub(crate) fn db(&self) -> DB {
         self.db.clone()
@@ -140,7 +139,7 @@ impl DB {
         //
         // Because data is stored using "Bytes", a clone here is a shallow
         // clone. Data is not copied.
-        let state = self.shared.state.lock().unwrap();
+        let mut state = self.get_state();
         state.entries.get(key).map(|entry| entry.data.clone())
     }
 
@@ -148,7 +147,7 @@ impl DB {
     //
     // If a value is already associated with the key, it is removed.
     pub(crate) fn set(&self, key: String, value: Bytes, expiration: Option<Duration>) {
-        let mut state = self.shared.state.lock().unwrap();
+        let mut state = self.get_state();
         // If this "set" becomes the key that expires next, the background
         // task needs to be notified so it can update its state.
         //
@@ -165,24 +164,24 @@ impl DB {
             when
         });
         // insert the entry into the "HashMap"
-        let prev = state.entries.insert(
+        let old_value = state.entries.insert(
             key.clone(),
             Entry {
                 data: value,
                 expires_at,
             }
         );
-        // If there was a value previously associated with the key and it
+        // If there was a value previously associated with the key, and it
         // had an expiration time the associated entry in the "expirations" map
         // must also be removed. This avoids leaking data.
-        if let Some(prev) = prev {
-            if let Some(when) = prev.expires_at {
+        if let Some(val) = old_value {
+            if let Some(when) = val.expires_at {
                 // clear expiration
                 state.expirations.remove(&(when, key.clone()));
             }
         }
         // Track the expiration. If we insert before remove that will cause a bug
-        // when current "(when, key)" equals prev "(when, key)". Remove then insert
+        // when current "(when, key)" equals previous "(when, key)". Remove then insert
         // can avoid this.
         if let Some(when) = expires_at {
             state.expirations.insert((when, key));
@@ -201,16 +200,16 @@ impl DB {
     // Returns a "Receiver" for the requested channel.
     //
     // The returned "Receiver" is used to receive values broadcast by "PUBLISH"
-    // commands.
+    // command.
     pub(crate) fn subscribe(&self, key: String) -> broadcast::Receiver<Bytes> {
         use std::collections::hash_map::Entry;
-        let mut state = self.shared.state.lock().unwrap();
+        let mut state = self.get_state();
         // If there is no entry for the requested channel, then create a new
         // broadcast channel and associate it with the key. If one already
         // exists, return an associated receiver.
         match state.pub_sub.entry(key) {
-            Entry::Occupied(e) => e.get().subscribe(),
-            Entry::Vacant(e) => {
+            Entry::Occupied(entry) => entry.get().subscribe(),
+            Entry::Vacant(entry) => {
                 // No broadcast channel exists yet, so create one.
                 //
                 // The channel is created with a capacity of "1024" messages. A
@@ -222,7 +221,7 @@ impl DB {
                 // in old messages being dropped. This prevents slow consumers
                 // from blocking the entire system.
                 let (tx, rx) = broadcast::channel(1024);
-                e.insert(tx);
+                entry.insert(tx);
                 rx
             }
         }
@@ -231,7 +230,7 @@ impl DB {
     // Publish a message to the channel. Returns the number of subscribers
     // listening on the channel.
     pub(crate) fn publish(&self, key: &str, value: Bytes) -> usize {
-        let state = self.shared.state.lock().unwrap();
+        let mut state = self.get_state();
         state
             .pub_sub
             .get(key)
@@ -245,17 +244,21 @@ impl DB {
     }
 
     // Signals the purge background task to shut down. This is called by the
-    // "DBShutdown"'s "Drop" implementation.
+    // "DBDropGuard"'s "Drop" implementation.
     fn shut_down_purge(&self) {
         // The background task must be signaled to shut down. This is done by
         // setting "State::shutdown" to "true" and signaling the task.
-        let mut state = self.shared.state.lock().unwrap();
+        let mut state = self.get_state();
         state.shutdown = true;
         // Drop the lock before signaling the background task. This helps
         // reduce lock contention by ensuring the background task doesn't
         // wake up only to be unable to acquire the mutex.
         drop(state);
         self.shared.background_task.notify_one();
+    }
+
+    fn get_state(&self) -> MutexGuard<State> {
+        self.shared.state.lock().unwrap()
     }
 }
 
@@ -269,11 +272,11 @@ impl Shared {
             // have dropped. The background task should exit.
             return None;
         }
-        // This is needed to make the borrow checker happy. In short, "lock()"
+        // This is needed to make the borrow checker happy. In short, "lock"
         // returns a "MutexGuard" and not a "&mut State". The borrow checker is
         // not able to see "through" the mutex guard and determine that it is
         // safe to access both "state.expirations" and "state.entries" mutably,
-        // so we get a "real" mutable reference to `State` outside the loop.
+        // so we get a "real" mutable reference to "State" outside the loop.
         let state = &mut *state;
         // find all the keys scheduled to expire before now
         let now = Instant::now();
@@ -329,5 +332,5 @@ async fn purge_expired_tasks(shared: Arc<Shared>) {
             shared.background_task.notified().await;
         }
     }
-    debug!("purge background task shut down")
+    println!("purge background task shut down")
 }

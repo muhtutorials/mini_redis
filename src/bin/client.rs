@@ -1,8 +1,10 @@
-use bytes::Bytes;
-use clap::{Parser, Subcommand};
 use std::num::ParseIntError;
 use std::str;
 use std::time::Duration;
+
+use bytes::Bytes;
+use clap::{Parser, Subcommand};
+
 use mini_redis::{clients::Client, DEFAULT_PORT};
 
 // Entry point for CLI tool.

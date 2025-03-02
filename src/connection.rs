@@ -28,13 +28,13 @@ pub struct Connection {
 }
 
 impl Connection {
-    // Create a new "Connection", backed by "socket". Read and write buffers
+    // Create a new "Connection" backed by a "socket". Read and write buffers
     // are initialized.
     pub fn new(socket: TcpStream) -> Connection {
         Connection{
             stream: BufWriter::new(socket),
-            // 4KB is default for read buffer. For the use case of mini redis,
-            // this is fine. However, real applications will want to tune this
+            // 4KB is default for read buffer. For the use case of "mini_redis"
+            // this is enough. However, real applications will want to tune this
             // value to their specific use case. There is a high likelihood that
             // a larger read buffer will work better.
             buffer: BytesMut::with_capacity(4 * 1024)

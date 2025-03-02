@@ -1,20 +1,20 @@
 use std::future::Future;
 use std::sync::Arc;
+
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc, Semaphore};
 use tokio::time::{self, Duration};
-use tracing::{debug, error, info, instrument};
 
 use crate::{Command, Connection, DB, DBDropGuard, Shutdown};
 
-// Maximum number of concurrent connections the mini_redis server will accept.
+// Maximum number of concurrent connections the "mini_redis" server will accept.
 //
 // When this limit is reached, the server will stop accepting connections until
 // an active connection terminates.
 //
 // A real application will want to make this value configurable, but for this
-// example, it is hardcoded.
-const MAX_CONNECTION: usize = 250;
+// example it is hardcoded.
+const MAX_CONNECTIONS: usize = 250;
 
 // Server listener state. Created in the "run" call. It includes a "run" method
 // which performs the TCP listening and initialization of per-connection state.
@@ -26,12 +26,10 @@ struct Server {
     // "pub/sub".
     //
     // This holds a wrapper around an "Arc". The internal "DB" can be
-    // retrieved and passed into the per connection state ("Handler").
+    // retrieved and passed into the per-connection state ("Handler").
     db_holder: DBDropGuard,
     // TCP listener supplied by the "run" caller
     listener: TcpListener,
-    // Limit the maximum number of connections.
-    //
     // A "Semaphore" is used to limit the maximum number of connections. Before
     // attempting to accept a new connection, a permit is acquired from the
     // semaphore. If none are available, the listener waits for one.
@@ -41,14 +39,14 @@ struct Server {
     semaphore: Arc<Semaphore>,
     // Broadcasts a shutdown signal to all active connections.
     //
-    // The initial "shutdown" trigger is provided by the "run" caller. The
+    // The initial shutdown trigger is provided by the "run" caller. The
     // server is responsible for gracefully shutting down active connections.
     // When a connection task is spawned, it is passed a broadcast receiver
     // handle. When a graceful shutdown is initiated, a "()" value is sent via
     // the "broadcast::Sender". Each active connection receives it, reaches a
     // safe terminal state, and completes the task.
     notify_shutdown: broadcast::Sender<()>,
-    // Used as part of the graceful shutdown process to wait for client
+    // Used as a part of the graceful shutdown process to wait for client
     // connections to complete processing.
     //
     // Tokio channels are closed once all "Sender" handles go out of scope.
@@ -114,7 +112,7 @@ pub async fn run(listener: TcpListener, shutdown: impl Future) {
     let mut server = Server {
         db_holder: DBDropGuard::new(),
         listener,
-        semaphore: Arc::new(Semaphore::new(MAX_CONNECTION)),
+        semaphore: Arc::new(Semaphore::new(MAX_CONNECTIONS)),
         notify_shutdown,
         shutdown_complete_tx,
     };
@@ -146,12 +144,12 @@ pub async fn run(listener: TcpListener, shutdown: impl Future) {
             // Errors encountered when handling individual connections do not
             // bubble up to this point.
             if let Err(err) = res {
-                error!(cause = %err, "failed to accept");
+                println!("failed to accept: {err}")
             }
         }
         _ = shutdown => {
             // shutdown signal has been received
-            info!("shutting down");
+            println!("shutting down")
         }
     }
     // Extract the "shutdown_complete" receiver and transmitter,
@@ -185,7 +183,7 @@ impl Server {
     // itself. One strategy for handling this is to implement a "backoff"
     // strategy, which is what we do here.
     async fn run(&mut self) -> crate::Result<()> {
-        info!("accepting inbound connections");
+        println!("accepting inbound connections");
         loop {
             // Wait for a permit to become available.
             //
@@ -222,7 +220,7 @@ impl Server {
             tokio::spawn(async move {
                 // Process the connection. If an error is encountered, log it.
                 if let Err(err) = handler.run().await {
-                    error!(cause = ?err, "connection error");
+                    println!("connection error: {err}");
                 }
                 // Move the permit into the task and drop it after completion.
                 // This returns the permit back to the semaphore.
@@ -237,7 +235,7 @@ impl Server {
     // strategy is used. After the first failure, the task waits for 1 second.
     // After the second failure, the task waits for 2 seconds. Each subsequent
     // failure doubles the wait time. If accepting fails on the 6th try after
-    // waiting for 64 seconds, then this function returns with an error.
+    // waiting for 64 seconds, then this function returns an error.
     async fn accept(&mut self) -> crate::Result<TcpStream> {
         let mut backoff = 1;
         // try to accept a few times
@@ -273,7 +271,6 @@ impl Handler {
     //
     // When the shutdown signal is received, the connection is processed until
     // it reaches a safe state, at which point it is terminated.
-    #[instrument(skip(self))]
     async fn run(&mut self) -> crate::Result<()> {
         // as long as the shutdown signal has not been received, try to read a
         // new request frame
@@ -298,16 +295,6 @@ impl Handler {
             // error if the frame is not a valid Redis command, or it is an
             // unsupported command.
             let cmd = Command::from_frame(frame)?;
-            // Logs the "cmd" object. The syntax here is a shorthand provided by
-            // the "tracing" crate. It can be thought of as similar to:
-            //
-            // ```
-            // debug!(cmd = format!("{:?}", cmd));
-            // ```
-            //
-            // "tracing" provides structured logging, so information is "logged"
-            // as "key/value" pairs.
-            debug!(?cmd);
             // Perform the work needed to apply the command. This may mutate the
             // database state as a result.
             //

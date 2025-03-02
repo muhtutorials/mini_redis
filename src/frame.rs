@@ -4,8 +4,8 @@ use std::io::Cursor;
 use std::num::TryFromIntError;
 use std::string::FromUtf8Error;
 
-use bytes::{Buf, Bytes};
 use atoi::atoi;
+use bytes::{Buf, Bytes};
 
 // frame in the Redis protocol
 #[derive(Clone, Debug)]
