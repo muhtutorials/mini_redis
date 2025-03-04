@@ -20,8 +20,8 @@ use crate::frame::{self, Frame};
 // The contents of the write buffer are then written to the socket.
 #[derive(Debug)]
 pub struct Connection {
-    // The "TcpStream" is decorated with a "BufWriter", which provides write
-    // level buffering.
+    // "TcpStream" is decorated with a "BufWriter" which provides write
+    // level buffering
     stream: BufWriter<TcpStream>,
     // the buffer for reading frames
     buffer: BytesMut,
@@ -31,7 +31,7 @@ impl Connection {
     // Create a new "Connection" backed by a "socket". Read and write buffers
     // are initialized.
     pub fn new(socket: TcpStream) -> Connection {
-        Connection{
+        Connection {
             stream: BufWriter::new(socket),
             // 4KB is default for read buffer. For the use case of "mini_redis"
             // this is enough. However, real applications will want to tune this
@@ -129,30 +129,30 @@ impl Connection {
             // An error was encountered while parsing the frame. The connection
             // is now in an invalid state. Returning "Err" from here will result
             // in the connection being closed.
-            Err(e) => Err(e.into()),
+            Err(err) => Err(err.into()),
         }
     }
 
     // Write a single "Frame" value to the underlying stream.
     //
     // The "Frame" value is written to the socket using the various "write_*"
-    // functions provided by "AsyncWrite". Calling these functions directly on
+    // methods provided by "AsyncWrite". Calling these methods directly on
     // a "TcpStream" is not recommended, as this will result in a large number of
-    // syscalls. However, it is fine to call these functions on a buffered
+    // syscalls. However, it is fine to call these methods on a buffered
     // write stream. The data will be written to the buffer. Once the buffer is
     // full, it is flushed to the underlying socket.
     pub async fn write_frame(&mut self, frame: &Frame) -> io::Result<()> {
         // Arrays are encoded by encoding each entry. All other frame types are
-        // considered literals. For now, mini redis is not able to encode
+        // considered literals. For now, "mini_redis" is not able to encode
         // recursive frame structures. See below for more details.
         match frame {
-            Frame::Array(val) => {
-                // Encode the frame type prefix. For an array it is a "*".
+            Frame::Array(arr) => {
+                // Encode the frame type prefix. For an array it is an "*".
                 self.stream.write_u8(b'*').await?;
                 // encode the length of the array
-                self.write_decimal(val.len() as u64).await?;
+                self.write_decimal(arr.len() as u64).await?;
                 // iterate and encode each entry in the array
-                for entry in &**val {
+                for entry in arr {
                     self.write_value(entry).await?;
                 }
             }
@@ -190,7 +190,7 @@ impl Connection {
             }
             // Encoding an "Array" from within a value cannot be done using a
             // recursive strategy. In general, async functions do not support
-            // recursion. Mini redis has not needed to encode nested arrays yet,
+            // recursion. "mini_redis" has not needed to encode nested arrays yet,
             // so for now it is skipped.
             Frame::Array(_val) => unreachable!(),
             Frame::Null => {

@@ -47,12 +47,12 @@ impl Parse {
         self.parts.next().ok_or(ParseError::EndOfStream)
     }
 
-    // Return the next entry as a string.
+    // Return the next entry as a "String".
     //
-    // If the next entry cannot be represented as a String, then an error is returned.
+    // If the next entry cannot be represented as a "String", then an error is returned.
     pub(crate) fn next_string(&mut self) -> Result<String, ParseError> {
         match self.next()? {
-            // Both "Simple" and "Bulk" representation may be strings. Strings
+            // Both "Simple" and "Bulk" representations may be strings. Strings
             // are parsed into UTF-8.
             //
             // While errors are stored as strings, they are considered separate
@@ -61,7 +61,7 @@ impl Parse {
             Frame::Bulk(data) => str::from_utf8(&data[..])
                 .map(|s| s.to_string())
                 .map_err(|_| "protocol error; invalid string".into()),
-            frame => Err(format!("protocol error; expected `Simple` frame or `Bulk` frame, got {:?}", frame).into()),
+            frame => Err(format!("protocol error; expected 'Simple' frame or 'Bulk' frame, got {:?}", frame).into()),
         }
     }
 
@@ -76,7 +76,7 @@ impl Parse {
             // they are considered separate types.
             Frame::Simple(s) => Ok(Bytes::from(s.into_bytes())),
             Frame::Bulk(data) => Ok(data),
-            frame => Err(format!("protocol error; expected `Simple` frame or `Bulk` frame, got {:?}", frame).into()),
+            frame => Err(format!("protocol error; expected 'Simple' frame or 'Bulk' frame, got {:?}", frame).into()),
         }
     }
 
@@ -97,7 +97,7 @@ impl Parse {
             // fails, an error is returned.
             Frame::Simple(data) => atoi::<u64>(data.as_bytes()).ok_or_else(|| MSG.into()),
             Frame::Bulk(data) => atoi::<u64>(&data).ok_or_else(|| MSG.into()),
-            frame => Err(format!("protocol error; expected `Integer` frame, got {:?}", frame).into()),
+            frame => Err(format!("protocol error; expected 'Integer' frame, got {:?}", frame).into()),
         }
     }
 

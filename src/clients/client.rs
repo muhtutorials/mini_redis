@@ -2,13 +2,13 @@
 //!
 //! Provides an async "connect" and methods for issuing the supported commands.
 
-use async_stream::try_stream;
-use bytes::Bytes;
 use std::io::{Error, ErrorKind};
 use std::time::Duration;
+
+use async_stream::try_stream;
+use bytes::Bytes;
 use tokio::net::{TcpStream, ToSocketAddrs};
 use tokio_stream::Stream;
-use tracing::{debug, instrument};
 
 use crate::cmd::{Get, Ping, Publish, Set, Subscribe, Unsubscribe};
 use crate::{Connection, Frame};
@@ -16,8 +16,8 @@ use crate::{Connection, Frame};
 // Established connection with a Redis server.
 //
 // Backed by a single "TcpStream", "Client" provides basic network client
-// functionality (no pooling, retrying, etc.). Connections are established using
-// the ["connect"](fn@connect) function.
+// functionality (no pooling, retrying, etc.). Connection is established using
+// the "connect" function.
 //
 // Requests are issued using the various methods of "Client".
 pub struct Client {
@@ -104,11 +104,8 @@ impl Client {
     ///     assert_eq!(b"PONG", &pong[..]);
     /// }
     /// ```
-    #[instrument(skip(self))]
     pub async fn ping(&mut self, message: Option<Bytes>) -> crate::Result<Bytes> {
         let frame = Ping::new(message).into_frame();
-        // todo: What does it do?
-        debug!(request = ?frame);
         self.connection.write_frame(&frame).await?;
         match self.read_response().await? {
             Frame::Simple(val) => Ok(val.into()),
@@ -136,11 +133,9 @@ impl Client {
     ///     println!("Got = {:?}", val);
     /// }
     /// ```
-    #[instrument(skip(self))]
     pub async fn get(&mut self, key: &str) -> crate::Result<Option<Bytes>> {
         // create a "Get" command for the key and convert it into a frame
         let frame = Get::new(key).into_frame();
-        debug!(request = ?frame);
         // Write the frame to the socket. This writes the full frame to the
         // socket, waiting if necessary.
         self.connection.write_frame(&frame).await?;
@@ -182,7 +177,6 @@ impl Client {
     ///     assert_eq!(val, "bar");
     /// }
     /// ```
-    #[instrument(skip(self))]
     pub async fn set(&mut self, key: &str, value: Bytes) -> crate::Result<()> {
         // Create a "Set" command and pass it to "set_cmd". A separate method is
         // used to set a value with an expiration. The common parts of both
@@ -230,7 +224,6 @@ impl Client {
     ///     assert!(val.is_some());
     /// }
     /// ```
-    #[instrument(skip(self))]
     pub async fn set_exp(
         &mut self,
         key: &str,
@@ -247,7 +240,6 @@ impl Client {
     async fn set_cmd(&mut self, cmd: Set) -> crate::Result<()> {
         // convert the "Set" command into a frame
         let frame = cmd.into_frame();
-        debug!(request = ?frame);
         // Write the frame to the socket. This writes the full frame to the
         // socket, waiting if necessary.
         self.connection.write_frame(&frame).await?;
@@ -280,11 +272,9 @@ impl Client {
     ///     println!("Got = {:?}", val);
     /// }
     /// ```
-    #[instrument(skip(self))]
     pub async fn publish(&mut self, channel: &str, message: Bytes) -> crate::Result<u64> {
         // convert the "Publish" command into a frame
         let frame = Publish::new(channel, message).into_frame();
-        debug!(request = ?frame);
         // write the frame to the socket
         self.connection.write_frame(&frame).await?;
         // read the response
@@ -301,7 +291,6 @@ impl Client {
     //
     // The "Subscriber" value is used to receive messages as well as manage the
     // list of channels the client is subscribed to.
-    #[instrument(skip(self))]
     pub async fn subscribe(mut self, channels: Vec<String>) -> crate::Result<Subscriber> {
         // Issue the "Subscribe" command to the server and wait for confirmation.
         // The client will then have been transitioned into the "Subscriber"
@@ -317,7 +306,6 @@ impl Client {
     async fn subscribe_cmd(&mut self, channels: &[String]) -> crate::Result<()> {
         // convert the "Subscribe" command into frame
         let frame = Subscribe::new(channels.to_vec()).into_frame();
-        debug!(request = ?frame);
         // write the frame to the socket
         self.connection.write_frame(&frame).await?;
         // for each channel being subscribed to, the server responds with a
@@ -347,7 +335,6 @@ impl Client {
     // If an "Error" frame is received, it is converted to "Err".
     async fn read_response(&mut self) -> crate::Result<Frame> {
         let response = self.connection.read_frame().await?;
-        debug!(?response);
         match response {
             // "Error" frames are converted to "Err"
             Some(Frame::Error(e)) => Err(e.into()),
@@ -379,7 +366,6 @@ impl Subscriber {
     pub async fn next_message(&mut self) -> crate::Result<Option<Message>> {
         match self.client.connection.read_frame().await? {
             Some(frame) => {
-                debug!(?frame);
                 match frame {
                     Frame::Array(ref frames) => match frames.as_slice() {
                         [message, channel, content] if *message == "MESSAGE" => {
@@ -418,7 +404,6 @@ impl Subscriber {
     }
 
     // subscribe to a list of new channels
-    #[instrument(skip(self))]
     pub async fn subscribe(&mut self, channels: &[String]) -> crate::Result<()> {
         self.client.subscribe_cmd(channels).await?;
         // update the set of subscribed channels
@@ -428,10 +413,8 @@ impl Subscriber {
     }
 
     // unsubscribe from a list of channels
-    #[instrument(skip(self))]
     pub async fn unsubscribe(&mut self, channels: &[String]) -> crate::Result<()> {
         let frame = Unsubscribe::new(channels).into_frame();
-        debug!(request = ?frame);
         // write frame to the socket
         self.client.connection.write_frame(&frame).await?;
         // if the input channel list is empty, server considers it as unsubscribing

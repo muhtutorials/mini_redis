@@ -1,5 +1,7 @@
-use bytes::Bytes;
 use std::pin::Pin;
+
+use async_stream::stream;
+use bytes::Bytes;
 use tokio::select;
 use tokio::sync::broadcast;
 use tokio_stream::{Stream, StreamExt, StreamMap};
@@ -50,7 +52,8 @@ impl Subscribe {
     // On success, the "Subscribe" value is returned. If the frame is
     // malformed, "Err" is returned.
     //
-    // Expects an array frame containing two or more entries: "SUBSCRIBE channel [channel ...]".
+    // Expects an array frame containing two or more entries:
+    // SUBSCRIBE channel [channel ...]
     pub(crate) fn parse_frames(parse: &mut Parse) -> crate::Result<Subscribe> {
         // The "SUBSCRIBE" string has already been consumed. At this point,
         // there is one or more strings remaining in "parse". These represent
@@ -152,7 +155,7 @@ async fn subscribe_to_channel(
 ) -> crate::Result<()> {
     let mut rx = db.subscribe(channel_name.clone());
     // subscribe to the channel
-    let rx = Box::pin(async_stream::stream! {
+    let rx = Box::pin(stream! {
         loop {
             match rx.recv().await {
                 Ok(msg) => yield msg,
@@ -177,7 +180,7 @@ async fn subscribe_to_channel(
 // "subscriptions".
 async fn handle_command(
     frame: Frame,
-    subscribe_to: &mut Vec<String>,
+    subscribed_channels: &mut Vec<String>,
     subscriptions: &mut StreamMap<String, Messages>,
     conn: &mut Connection,
 ) -> crate::Result<()> {
@@ -185,22 +188,22 @@ async fn handle_command(
     //
     // Only "Subscribe" and "Unsubscribe" commands are permitted in this context.
     match Command::from_frame(frame)? {
-        Command::Subscribe(sub) => {
+        Command::Subscribe(subscribe) => {
             // the "apply" method will subscribe to the channels we add to this vector
-            subscribe_to.extend(sub.channels.into_iter());
+            subscribed_channels.extend(subscribe.channels.into_iter());
         }
-        Command::Unsubscribe(mut unsub) => {
+        Command::Unsubscribe(mut unsubscribe) => {
             // If no channels are specified, this requests unsubscribing from
             // all channels. To implement this, the "unsubscribe.channels"
-            // vector is populated with the list of channels currently subscribed
-            // to.
-            if unsub.channels.is_empty() {
-                unsub.channels = subscriptions
+            // vector is populated with the list of channels currently
+            // subscribed to.
+            if unsubscribe.channels.is_empty() {
+                unsubscribe.channels = subscriptions
                     .keys()
                     .map(|channel_name| channel_name.to_string())
                     .collect();
             }
-            for channel_name in unsub.channels {
+            for channel_name in unsubscribe.channels {
                 subscriptions.remove(&channel_name);
                 let resp = make_unsubscribe_frame(channel_name, subscriptions.len());
                 conn.write_frame(&resp).await?;
@@ -268,7 +271,7 @@ impl Unsubscribe {
     // malformed, "Err" is returned.
     //
     // Expects an array frame containing at least one entry:
-    //  UNSUBSCRIBE [channel [channel ...]].
+    //  UNSUBSCRIBE [channel [channel ...]]
     pub(crate) fn parse_frames(parse: &mut Parse) -> Result<Unsubscribe, ParseError> {
         // there may be no channels listed, so start with an empty vector
         let mut channels = vec![];

@@ -7,7 +7,7 @@ use crate::{Connection, DB, Frame, Parse};
 // Sends a message into a channel without any knowledge of individual consumers.
 // Consumers may subscribe to channels in order to receive the messages.
 //
-// Channel names have no relation to the key-value namespace. Publishing on a
+// Channel names have no relation to the "key/value" namespace. Publishing on a
 // channel named "foo" has no relation to setting the "foo" key.
 #[derive(Debug)]
 pub struct Publish {
@@ -18,7 +18,7 @@ pub struct Publish {
 }
 
 impl Publish {
-    // create a new "Publish" command which sends "message" on "channel"
+    // create a new "Publish" command which sends a "message" on a "channel"
     pub(crate) fn new(channel: impl ToString, message: Bytes) -> Publish {
         Publish {
             channel: channel.to_string(),

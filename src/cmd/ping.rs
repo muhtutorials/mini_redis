@@ -1,5 +1,4 @@
 use bytes::Bytes;
-use tracing::{debug, instrument};
 
 use crate::{Connection, Frame, Parse, ParseError};
 
@@ -15,7 +14,7 @@ pub struct Ping {
 }
 
 impl Ping {
-    // create a new "Ping" command with optional message
+    // create a new "Ping" command with an optional message
     pub fn new(message: Option<Bytes>) -> Ping {
         Ping { message }
     }
@@ -28,7 +27,7 @@ impl Ping {
     //
     // The "PING" string has already been consumed.
     //
-    // Returns the "Ping" value on success. If the frame is malformed, "Err" is
+    // Returns the "PONG" value on success. If the frame is malformed, "Err" is
     // returned.
     //
     // Expects an array frame containing "PING" and an optional message: "PING [message]".
@@ -36,7 +35,7 @@ impl Ping {
         match parse.next_bytes() {
             Ok(msg) => Ok(Ping::new(Some(msg))),
             Err(ParseError::EndOfStream) => Ok(Ping::default()),
-            Err(e) => Err(e.into()),
+            Err(err) => Err(err.into()),
         }
     }
 
@@ -44,13 +43,11 @@ impl Ping {
     //
     // The response is written to "conn". This is called by the server in order
     // to execute a received command.
-    #[instrument(skip(self, conn))]
     pub(crate) async fn apply(self, conn: &mut Connection) -> crate::Result<()> {
         let resp = match self.message {
             Some(msg) => Frame::Bulk(msg),
             None => Frame::Simple("PONG".to_string()),
         };
-        debug!(?resp);
         // write response back to the client
         conn.write_frame(&resp).await?;
         Ok(())

@@ -1,13 +1,12 @@
 use std::time::Duration;
 
 use bytes::Bytes;
-use tracing::{debug, instrument};
 
 use crate::{Connection, DB, Frame, Parse, ParseError};
 
-// Set key to hold the string value.
+// Set a key to hold a string value.
 //
-// If the key already holds a value, it is overwritten, regardless of its type.
+// If the key already holds a value, it is overwritten regardless of its type.
 // Any previous time to live associated with the key is discarded on successful
 // "Set" operation.
 //
@@ -63,7 +62,7 @@ impl Set {
     // Returns the "Set" value on success. If the frame is malformed, "Err" is
     // returned.
     //
-    // Expects an array frame containing at least 3 entries:
+    // Expects an array frame containing at least three entries:
     //  "SET key value [EX seconds | PX milliseconds]"
     pub(crate) fn parse_frames(parse: &mut Parse) -> crate::Result<Set> {
         // Read the key to set. This is a required field.
@@ -84,9 +83,9 @@ impl Set {
                 // Expiration is specified in milliseconds. The next value is an
                 // integer.
                 let millis = parse.next_int()?;
-                expiration = Some(Duration::from_secs(millis));
+                expiration = Some(Duration::from_millis(millis));
             }
-            // Currently, mini_redis does not support any of the other "SET"
+            // Currently, "mini_redis" does not support any of the other "SET"
             // options. An error here results in the connection being
             // terminated. Other connections will continue to operate normally.
             Ok(_) => return Err("currently 'SET' only supports the expiration option".into()),
@@ -105,13 +104,11 @@ impl Set {
     //
     // The response is written to "conn". This is called by the server in order
     // to execute a received command.
-    #[instrument(skip(self, db, conn))]
     pub(crate) async fn apply(self, db: &DB, conn: &mut Connection) -> crate::Result<()> {
         // set the value in the shared database state
         db.set(self.key, self.value, self.expiration);
         // create a success response and write it to "conn"
         let resp = Frame::Simple("OK".to_string());
-        debug!(?resp);
         conn.write_frame(&resp).await?;
         Ok(())
     }
@@ -130,7 +127,7 @@ impl Set {
             // 1. SET key value EX seconds;
             // 2. SET key value PX milliseconds;
             // We chose the second option because it allows greater precision and
-            // "src/bin/cli" parses the expiration argument as milliseconds
+            // "src/bin/client" parses the expiration argument as milliseconds
             // in "duration_from_millis_str()".
             frame.push_bulk(Bytes::from("PX".as_bytes()));
             frame.push_int(dur.as_millis() as u64);

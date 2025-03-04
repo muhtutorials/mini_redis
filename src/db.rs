@@ -139,7 +139,7 @@ impl DB {
         //
         // Because data is stored using "Bytes", a clone here is a shallow
         // clone. Data is not copied.
-        let mut state = self.get_state();
+        let state = self.get_state();
         state.entries.get(key).map(|entry| entry.data.clone())
     }
 
@@ -230,7 +230,7 @@ impl DB {
     // Publish a message to the channel. Returns the number of subscribers
     // listening on the channel.
     pub(crate) fn publish(&self, key: &str, value: Bytes) -> usize {
-        let mut state = self.get_state();
+        let state = self.get_state();
         state
             .pub_sub
             .get(key)
