@@ -74,7 +74,7 @@ impl Client {
         // The "addr" argument is passed directly to "TcpStream::connect". This
         // performs any asynchronous DNS lookup and attempts to establish a TCP
         // connection. An error at either step returns an error, which is then
-        // bubbled up to the caller of "mini_redis" connect.
+        // bubbled up to the caller of connect.
         let socket = TcpStream::connect(addr).await?;
         // Initialize the connection state. This allocates "read/write" buffers to
         // perform Redis protocol frame parsing.
@@ -85,21 +85,19 @@ impl Client {
     /// Ping to the server.
     ///
     /// Returns "PONG" if no argument is provided, otherwise
-    /// returns a copy of the argument as a bulk.
+    /// returns a copy of the argument as a "Bulk".
     ///
     /// This command is often used to test if a connection
     /// is still alive, or to measure latency.
     ///
     /// # Examples
     ///
-    /// Demonstrates basic usage.
     /// ```no_run
     /// use mini_redis::clients::Client;
     ///
     /// #[tokio::main]
     /// async fn main() {
     ///     let mut client = Client::connect("localhost:6379").await.unwrap();
-    ///
     ///     let pong = client.ping(None).await.unwrap();
     ///     assert_eq!(b"PONG", &pong[..]);
     /// }
@@ -120,15 +118,12 @@ impl Client {
     ///
     /// # Examples
     ///
-    /// Demonstrates basic usage.
-    ///
     /// ```no_run
     /// use mini_redis::clients::Client;
     ///
     /// #[tokio::main]
     /// async fn main() {
     ///     let mut client = Client::connect("localhost:6379").await.unwrap();
-    ///
     ///     let val = client.get("foo").await.unwrap();
     ///     println!("Got = {:?}", val);
     /// }
@@ -151,17 +146,15 @@ impl Client {
         }
     }
 
-    /// Set `key` to hold the given `value`.
+    /// Set a `key` to hold the given `value`.
     ///
-    /// The `value` is associated with `key` until it is overwritten by the next
+    /// The `value` is associated with the `key` until it is overwritten by the next
     /// call to `SET` or it is removed.
     ///
-    /// If key already holds a value, it is overwritten. Any previous `time to live`
+    /// If the key already holds a value, it is overwritten. Any previous `time to live`
     /// associated with the key is discarded on successful `SET` operation.
     ///
     /// # Examples
-    ///
-    /// Demonstrates basic usage.
     ///
     /// ```no_run
     /// use mini_redis::clients::Client;
@@ -169,9 +162,7 @@ impl Client {
     /// #[tokio::main]
     /// async fn main() {
     ///     let mut client = Client::connect("localhost:6379").await.unwrap();
-    ///
     ///     client.set("foo", "bar".into()).await.unwrap();
-    ///
     ///     // getting the value immediately works
     ///     let val = client.get("foo").await.unwrap().unwrap();
     ///     assert_eq!(val, "bar");
@@ -184,42 +175,38 @@ impl Client {
         self.set_cmd(Set::new(key, value, None)).await
     }
 
-    /// Set `key` to hold the given `value`. The value expires after `expiration`.
+    /// Set a `key` to hold the given `value`. The value expires after `expiration`.
     ///
-    /// The `value` is associated with `key` until one of the following:
+    /// The `value` is associated with the `key` until one of the following:
     /// - it expires;
     /// - it is overwritten by the next call to `SET`;
     /// - it is removed.
     ///
-    /// If key already holds a value, it is overwritten. Any previous `time to live`
+    /// If the key already holds a value, it is overwritten. Any previous `time to live`
     /// associated with the key is discarded on a successful `SET` operation.
     ///
     /// # Examples
     ///
-    /// Demonstrates basic usage. This example doesn't guarantee to always
+    /// This example doesn't guarantee to always
     /// work as it relies on time based logic and assumes the client and server
     /// stay relatively synchronized in time. The real world tends to not be so
     /// favorable.
     ///
     /// ```no_run
     /// use mini_redis::clients::Client;
-    /// use tokio::time;
     /// use std::time::Duration;
+    /// use tokio::time;
     ///
     /// #[tokio::main]
     /// async fn main() {
     ///     let ttl = Duration::from_millis(500);
     ///     let mut client = Client::connect("localhost:6379").await.unwrap();
-    ///
     ///     client.set_exp("foo", "bar".into(), ttl).await.unwrap();
-    ///
     ///     // getting the value immediately works
     ///     let val = client.get("foo").await.unwrap().unwrap();
     ///     assert_eq!(val, "bar");
-    ///
     ///     // wait for the TTL to expire
     ///     time::sleep(ttl).await;
-    ///
     ///     let val = client.get("foo").await.unwrap();
     ///     assert!(val.is_some());
     /// }
@@ -246,12 +233,12 @@ impl Client {
         // Wait for the response from the server. On success, the server
         // responds simply with "OK". Any other response indicates an error.
         match self.read_response().await? {
-            Frame::Simple(resp) if resp == "OK" => Ok(()),
+            Frame::Simple(val) if val == "OK" => Ok(()),
             frame => Err(frame.to_error()),
         }
     }
 
-    /// Posts `message` to the given `channel`.
+    /// Posts a `message` to the given `channel`.
     ///
     /// Returns the number of subscribers currently listening on the channel.
     /// There is no guarantee that these subscribers receive the message as they
@@ -259,15 +246,12 @@ impl Client {
     ///
     /// # Examples
     ///
-    /// Demonstrates basic usage.
-    ///
     /// ```no_run
     /// use mini_redis::clients::Client;
     ///
     /// #[tokio::main]
     /// async fn main() {
     ///     let mut client = Client::connect("localhost:6379").await.unwrap();
-    ///
     ///     let val = client.publish("foo", "bar".into()).await.unwrap();
     ///     println!("Got = {:?}", val);
     /// }
@@ -279,7 +263,7 @@ impl Client {
         self.connection.write_frame(&frame).await?;
         // read the response
         match self.read_response().await? {
-            Frame::Integer(resp) => Ok(resp),
+            Frame::Integer(val) => Ok(val),
             frame => Err(frame.to_error()),
         }
     }
@@ -302,27 +286,27 @@ impl Client {
         })
     }
 
-    // the core "SUBSCRIBE" logic, used by miscellaneous subscribe methods
+    // the core "SUBSCRIBE" logic used by miscellaneous subscribe methods
     async fn subscribe_cmd(&mut self, channels: &[String]) -> crate::Result<()> {
-        // convert the "Subscribe" command into frame
-        let frame = Subscribe::new(channels.to_vec()).into_frame();
+        // convert the "Subscribe" command into a frame
+        let frame = Subscribe::new(channels).into_frame();
         // write the frame to the socket
         self.connection.write_frame(&frame).await?;
         // for each channel being subscribed to, the server responds with a
         // message confirming subscription to that channel
         for channel in channels {
             // read the response
-            let response = self.read_response().await?;
+            let resp = self.read_response().await?;
             // verify confirmation of subscription
-            match response {
-                Frame::Array(ref frame) => match frame.as_slice() {
+            match resp {
+                Frame::Array(ref frames) => match frames.as_slice() {
                     // The server responds with an array frame in the form of:
                     //  ["SUBSCRIBE", channel, num_subscribed]
                     // Where channel is the name of the channel and
                     // num_subscribed is the number of channels that the client
                     // is currently subscribed to.
                     [sub, ch, ..] if *sub == "SUBSCRIBE" && *ch == channel => {},
-                    _ => return Err(response.to_error()),
+                    _ => return Err(resp.to_error()),
                 },
                 frame => return Err(frame.to_error()),
             }
@@ -337,7 +321,7 @@ impl Client {
         let response = self.connection.read_frame().await?;
         match response {
             // "Error" frames are converted to "Err"
-            Some(Frame::Error(e)) => Err(e.into()),
+            Some(Frame::Error(err)) => Err(err.into()),
             Some(frame) => Ok(frame),
             None => {
                 // Receiving "None" here indicates the server has closed the
@@ -354,7 +338,7 @@ impl Client {
 }
 
 impl Subscriber {
-    // returns channels "Subscriber" is subscribed to
+    // returns channels client is subscribed to
     pub fn get_subs(&self) -> &[String] {
         &self.subs
     }
@@ -386,7 +370,7 @@ impl Subscriber {
     // Convert the subscriber into a "Stream" yielding new messages published
     // on subscribed channels.
     //
-    // "Subscriber" does not implement stream itself as doing so with safe code
+    // "Subscriber" does not implement the stream itself as doing so with safe code
     // is non-trivial. The usage of "async/await" would require a manual "Stream"
     // implementation to use "unsafe" code. Instead, a conversion function is
     // provided and the returned stream is implemented with the help of the
@@ -407,7 +391,6 @@ impl Subscriber {
     pub async fn subscribe(&mut self, channels: &[String]) -> crate::Result<()> {
         self.client.subscribe_cmd(channels).await?;
         // update the set of subscribed channels
-        // todo: not totally clear what's going on here
         self.subs.extend(channels.iter().map(Clone::clone));
         Ok(())
     }
@@ -415,7 +398,7 @@ impl Subscriber {
     // unsubscribe from a list of channels
     pub async fn unsubscribe(&mut self, channels: &[String]) -> crate::Result<()> {
         let frame = Unsubscribe::new(channels).into_frame();
-        // write frame to the socket
+        // write the frame to the socket
         self.client.connection.write_frame(&frame).await?;
         // if the input channel list is empty, server considers it as unsubscribing
         // from all subscribed channels, so we assert that the unsubscribe list received
@@ -429,7 +412,7 @@ impl Subscriber {
         for _ in 0..num {
             let resp = self.client.read_response().await?;
             match resp {
-                Frame::Array(ref frame) => match frame.as_slice() {
+                Frame::Array(ref frames) => match frames.as_slice() {
                     [unsubscribe, channel, ..] if *unsubscribe == "UNSUBSCRIBE" => {
                         let len = self.subs.len();
                         if len == 0 {

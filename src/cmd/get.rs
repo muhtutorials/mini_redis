@@ -69,7 +69,6 @@ impl Get {
     pub(crate) fn into_frame(self) -> Frame {
         let mut frame = Frame::array();
         frame.push_bulk(Bytes::from("GET".as_bytes()));
-        // todo: Why is it "into_bytes" and not "as_bytes"?
         frame.push_bulk(Bytes::from(self.key.into_bytes()));
         frame
     }

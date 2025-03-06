@@ -2,8 +2,9 @@
 //!
 //! Provides a blocking "connect" and methods for issuing the supported commands.
 
-use bytes::Bytes;
 use std::time::Duration;
+
+use bytes::Bytes;
 use tokio::net::ToSocketAddrs;
 use tokio::runtime::Runtime;
 
@@ -12,8 +13,8 @@ pub use crate::clients::Message;
 // Established connection with a Redis server.
 //
 // Backed by a single "TcpStream", "Client" provides basic network client
-// functionality (no pooling, retrying, etc.). Connections are established using
-// the ["connect"](fn@connect) function.
+// functionality (no pooling, retrying, etc.). Connection is established using
+// the "connect" function.
 //
 // Requests are issued using the various methods of "Client".
 pub struct BlockingClient {
@@ -23,7 +24,6 @@ pub struct BlockingClient {
     // client in a blocking manner
     rt: Runtime,
 }
-
 
 // A client that has entered "pub/sub" mode.
 //
@@ -82,14 +82,11 @@ impl BlockingClient {
     ///
     /// # Examples
     ///
-    /// Demonstrates basic usage.
-    ///
     /// ```no_run
     /// use mini_redis::clients::BlockingClient;
     ///
     /// fn main() {
     ///     let mut client = BlockingClient::connect("localhost:6379").unwrap();
-    ///
     ///     let val = client.get("foo").unwrap();
     ///     println!("Got = {:?}", val);
     /// }
@@ -98,27 +95,22 @@ impl BlockingClient {
         self.rt.block_on(self.inner.get(key))
     }
 
-
-    /// Set `key` to hold the given `value`.
+    /// Set a `key` to hold the given `value`.
     ///
-    /// The `value` is associated with `key` until it is overwritten by the next
+    /// The `value` is associated with the `key` until it is overwritten by the next
     /// call to `SET` or it is removed.
     ///
-    /// If key already holds a value, it is overwritten. Any previous `time to live`
+    /// If the key already holds a value, it is overwritten. Any previous `time to live`
     /// associated with the key is discarded on successful `SET` operation.
     ///
     /// # Examples
-    ///
-    /// Demonstrates basic usage.
     ///
     /// ```no_run
     /// use mini_redis::clients::BlockingClient;
     ///
     /// fn main() {
     ///     let mut client = BlockingClient::connect("localhost:6379").unwrap();
-    ///
     ///     client.set("foo", "bar".into()).unwrap();
-    ///
     ///     // getting the value immediately works
     ///     let val = client.get("foo").unwrap().unwrap();
     ///     assert_eq!(val, "bar");
@@ -128,19 +120,19 @@ impl BlockingClient {
         self.rt.block_on(self.inner.set(key, value))
     }
 
-    /// Set `key` to hold the given `value`. The value expires after `expiration`.
+    /// Set a `key` to hold the given `value`. The value expires after `expiration`.
     ///
-    /// The `value` is associated with `key` until one of the following:
+    /// The `value` is associated with the `key` until one of the following:
     /// - it expires;
     /// - it is overwritten by the next call to `SET`;
     /// - it is removed.
     ///
-    /// If key already holds a value, it is overwritten. Any previous `time to live`
+    /// If the key already holds a value, it is overwritten. Any previous `time to live`
     /// associated with the key is discarded on a successful `SET` operation.
     ///
     /// # Examples
     ///
-    /// Demonstrates basic usage. This example doesn't guarantee to always
+    /// This example doesn't guarantee to always
     /// work as it relies on time based logic and assumes the client and server
     /// stay relatively synchronized in time. The real world tends to not be so
     /// favorable.
@@ -153,16 +145,12 @@ impl BlockingClient {
     /// fn main() {
     ///     let ttl = Duration::from_millis(500);
     ///     let mut client = BlockingClient::connect("localhost:6379").unwrap();
-    ///
     ///     client.set_exp("foo", "bar".into(), ttl).unwrap();
-    ///
     ///     // getting the value immediately works
     ///     let val = client.get("foo").unwrap().unwrap();
     ///     assert_eq!(val, "bar");
-    ///
     ///     // wait for the TTL to expire
     ///     thread::sleep(ttl);
-    ///
     ///     let val = client.get("foo").unwrap();
     ///     assert!(val.is_some());
     /// }
@@ -176,7 +164,7 @@ impl BlockingClient {
         self.rt.block_on(self.inner.set_exp(key, value, expiration))
     }
 
-    /// Posts `message` to the given `channel`.
+    /// Posts a `message` to the given `channel`.
     ///
     /// Returns the number of subscribers currently listening on the channel.
     /// There is no guarantee that these subscribers receive the message as they
@@ -184,14 +172,11 @@ impl BlockingClient {
     ///
     /// # Examples
     ///
-    /// Demonstrates basic usage.
-    ///
     /// ```no_run
     /// use mini_redis::clients::BlockingClient;
     ///
     /// fn main() {
     ///     let mut client = BlockingClient::connect("localhost:6379").unwrap();
-    ///
     ///     let val = client.publish("foo", "bar".into()).unwrap();
     ///     println!("Got = {:?}", val);
     /// }
@@ -203,7 +188,7 @@ impl BlockingClient {
     // Subscribes the client to the specified channels.
     //
     // Once a client issues a "Subscribe" command, it may no longer issue any
-    // non "pub/sub" commands. The function consumes "self" and returns a
+    // non "pub/sub" commands. The method consumes "self" and returns a
     // "BlockingSubscriber".
     //
     // The "BlockingSubscriber" value is used to receive messages as well as

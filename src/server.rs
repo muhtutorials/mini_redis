@@ -92,7 +92,7 @@ struct Handler {
     _shutdown_complete: mpsc::Sender<()>,
 }
 
-// Run the mini_redis server.
+// Run the "mini_redis" server.
 //
 // Accepts connections from the supplied listener. For each inbound connection,
 // a task is spawned to handle that connection. The server runs until the

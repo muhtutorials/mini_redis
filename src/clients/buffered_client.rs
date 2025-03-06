@@ -21,8 +21,8 @@ enum Command {
 // requester.
 type Message = (Command, oneshot::Sender<Result<Option<Bytes>>>);
 
-// Receive commands sent through the channel and forward them to client. The
-// response is returned back to the caller via "oneshot".
+// Receive commands sent through the channel and forward them to the client.
+// The response is returned back to the caller via "oneshot".
 async fn run(mut client: Client, mut rx: Receiver<Message>) {
     // Repeatedly pop messages from the channel. A return value of "None"
     // indicates that all "BufferedClient" handles have been dropped and there will never be
@@ -92,7 +92,7 @@ impl BufferedClient {
         }
     }
 
-    // Set key to hold the given value.
+    // Set a key to hold the given value.
     //
     // Same as "Client::set" but requests are buffered until the associated
     // connection has the ability to send the request.

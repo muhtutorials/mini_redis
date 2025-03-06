@@ -32,13 +32,12 @@ pub struct Unsubscribe {
 // "broadcast::Receiver". We use "stream!" to create a "Stream" that consumes
 // messages. Because "stream!" values cannot be named, we box the stream using
 // a trait object.
-// todo: Why is this type?
 type Messages = Pin<Box<dyn Stream<Item = Bytes> + Send>>;
 
 impl Subscribe {
     // creates a new "Subscribe" command to listen on the specified channels
-    pub(crate) fn new(channels: Vec<String>) -> Subscribe {
-        Subscribe { channels }
+    pub(crate) fn new(channels: &[String]) -> Subscribe {
+        Subscribe { channels: channels.to_vec() }
     }
 
     // Parse a "Subscribe" instance from a received frame.
@@ -252,7 +251,6 @@ fn make_message_frame(channel_name: String, msg: Bytes) -> Frame {
 
 impl Unsubscribe {
     // create a new "Unsubscribe" command with the given channels
-    // todo: Why is it not "Vec<String>"?
     pub(crate) fn new(channels: &[String]) -> Unsubscribe {
         Unsubscribe {
             channels: channels.to_vec()
