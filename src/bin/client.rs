@@ -96,18 +96,18 @@ enum Command {
         // message to ping
         message: Option<Bytes>
     },
-    // get the value of key
+    // get the value of a key
     Get {
-        // name of key to get
+        // name of the key to get
         key: String,
     },
-    // set key to hold the value
+    // set a key to hold the value
     Set {
-        // name of key to set
+        // name of the key to set
         key: String,
         // value to set
         value: Bytes,
-        // expire the value after specified amount of time
+        // expire the value after the specified amount of time
         #[arg(value_parser = duration_from_ms_str)]
         expiration: Option<Duration>,
     },
